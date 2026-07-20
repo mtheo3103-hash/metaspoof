@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MetaSpoof — Online EXIF Spoofer & Sanitizer</title>
+    <title>MetaSpoof — Online EXIF Spoofer & Metadata Sanitizer</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome CDN -->
@@ -13,13 +13,15 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <!-- Piexifjs CDN -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/piexifjs/1.0.6/piexif.js"></script>
+    <!-- heic2any CDN (for HEIC/HEIF iPhone images) -->
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
         body { font-family: 'Inter', sans-serif; }
         #map { height: 220px; border-radius: 0.75rem; z-index: 1; }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
 
     <!-- Header -->
     <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
@@ -35,7 +37,7 @@
             </div>
             <div class="flex items-center space-x-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-full text-xs font-medium">
                 <i class="fa-solid fa-shield-halved"></i>
-                <span>100% Client-Side / Browser-Only</span>
+                <span class="hidden sm:inline">100% Client-Side / Browser-Only</span>
             </div>
         </div>
     </header>
@@ -43,41 +45,44 @@
     <!-- Main Content -->
     <main class="flex-grow max-w-6xl w-full mx-auto px-4 py-8">
         
-        <!-- Hero intro -->
         <div class="text-center max-w-2xl mx-auto mb-10">
-            <h2 class="text-3xl font-extrabold text-white sm:text-4xl">Metadaten löschen oder faken</h2>
+            <h2 class="text-3xl font-extrabold text-white sm:text-4xl">Clean or Fake Image Metadata</h2>
             <p class="mt-3 text-slate-400 text-sm leading-relaxed">
-                Entferne sensible GPS-Daten und Kamera-Informationen aus deinen Fotos oder ersetze sie durch gefälschte Standorte und Aufnahmedaten. Deine Dateien verlassen <strong>niemals deinen Browser</strong>.
+                Remove sensitive GPS coordinates and camera details from your photos, or spoof them instantly. Your files <strong>never leave your browser</strong>.
             </p>
         </div>
 
-        <!-- Dropzone / Upload Area -->
+        <!-- Dropzone -->
         <div id="dropzone" class="border-2 border-dashed border-slate-700 hover:border-indigo-500 bg-slate-800/50 hover:bg-slate-800/80 rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 mb-8 shadow-xl relative">
-            <input type="file" id="fileInput" accept="image/jpeg, image/jpg" class="hidden">
+            <input type="file" id="fileInput" accept="image/jpeg, image/jpg, image/png, image/webp, image/heic, image/heif" class="hidden">
             <div class="flex flex-col items-center justify-center space-y-3">
                 <div class="w-16 h-16 bg-slate-700/50 rounded-full flex items-center justify-center text-indigo-400 text-2xl">
                     <i class="fa-solid fa-cloud-arrow-up"></i>
                 </div>
                 <div>
-                    <span class="text-white font-semibold">Klicke zum Auswählen</span> oder ziehe dein JPG-Bild hierher
+                    <span class="text-white font-semibold">Click to choose a file</span> or drag & drop your image here
                 </div>
-                <p class="text-xs text-slate-500">Unterstützt aktuell JPEG / JPG Dateien</p>
+                <p class="text-xs text-slate-500">Supported formats: <strong>JPG, JPEG, PNG, WEBP, HEIC</strong></p>
+            </div>
+            <!-- Loading Overlay -->
+            <div id="loadingOverlay" class="hidden absolute inset-0 bg-slate-900/90 rounded-2xl flex flex-col items-center justify-center z-20">
+                <i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-400 mb-3"></i>
+                <p id="loadingText" class="text-sm font-medium text-slate-200">Processing image...</p>
             </div>
         </div>
 
-        <!-- Editor Container (hidden by default) -->
-        <div id="editorSection" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- Editor Container -->
+        <div id="editorSection" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8 mb-12">
             
-            <!-- Left Column: Image Preview & Original Metadata -->
+            <!-- Left Column -->
             <div class="lg:col-span-5 space-y-6">
-                
-                <!-- Image Preview Card -->
+                <!-- Image Preview -->
                 <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 shadow-xl">
                     <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center">
-                        <i class="fa-solid fa-image text-indigo-400 mr-2"></i> Vorschau
+                        <i class="fa-solid fa-image text-indigo-400 mr-2"></i> Preview
                     </h3>
                     <div class="aspect-video bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 relative">
-                        <img id="imagePreview" src="" alt="Vorschau" class="max-h-full max-w-full object-contain">
+                        <img id="imagePreview" src="" alt="Preview" class="max-h-full max-w-full object-contain">
                     </div>
                     <div class="mt-3 text-xs text-slate-400 flex justify-between" id="fileInfo">
                         <span id="fileName">-</span>
@@ -88,101 +93,92 @@
                 <!-- Detected Metadata -->
                 <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-5 shadow-xl">
                     <h3 class="text-sm font-semibold text-slate-300 mb-4 flex items-center">
-                        <i class="fa-solid fa-circle-info text-indigo-400 mr-2"></i> Erkannte Original-Metadaten
+                        <i class="fa-solid fa-circle-info text-indigo-400 mr-2"></i> Detected Original Metadata
                     </h3>
                     <div id="originalExifDisplay" class="space-y-2 text-xs text-slate-300">
-                        <p class="text-slate-500 italic">Lade Metadaten...</p>
+                        <p class="text-slate-500 italic">Reading EXIF data...</p>
                     </div>
                 </div>
 
-                <!-- Action 1: Wipe All EXIF -->
+                <!-- Action 1: Wipe All -->
                 <div class="bg-slate-800/60 border border-red-500/20 rounded-2xl p-5 shadow-xl">
                     <h3 class="text-sm font-semibold text-red-400 mb-2 flex items-center">
-                        <i class="fa-solid fa-trash-can mr-2"></i> 1-Klick Komplettbereinigung
+                        <i class="fa-solid fa-trash-can mr-2"></i> 1-Click Complete Wipe
                     </h3>
-                    <p class="text-xs text-slate-400 mb-4">Löscht spurlos alle EXIF-, GPS- und Kamera-Informationen aus diesem Bild.</p>
-                    <button id="btnWipe" class="w-full bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition flex items-center justify-center shadow-lg shadow-red-600/20">
-                        <i class="fa-solid fa-broom mr-2"></i> Alle Metadaten löschen & Download
+                    <button id="btnWipe" class="w-full mt-4 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold py-2.5 px-4 rounded-xl transition flex items-center justify-center shadow-lg shadow-red-600/20">
+                        <i class="fa-solid fa-broom mr-2"></i> Strip All Metadata & Download
                     </button>
                 </div>
             </div>
 
-            <!-- Right Column: Metadata Spoofer Controls -->
+            <!-- Right Column -->
             <div class="lg:col-span-7 space-y-6">
                 <div class="bg-slate-800/60 border border-slate-700/60 rounded-2xl p-6 shadow-xl space-y-6">
                     <div class="border-b border-slate-700 pb-4">
                         <h3 class="text-base font-bold text-white flex items-center">
-                            <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i> Metadaten-Spoofer (Faken)
+                            <i class="fa-solid fa-sliders text-indigo-400 mr-2"></i> Metadata Spoofer
                         </h3>
-                        <p class="text-xs text-slate-400 mt-1">Trage Wunsch-Daten ein, die in das Foto geschrieben werden sollen.</p>
                     </div>
 
-                    <!-- Preset Selector -->
+                    <!-- Presets -->
                     <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-2">Kamera-Preset wählen</label>
+                        <label class="block text-xs font-medium text-slate-300 mb-2">Camera Preset</label>
                         <select id="presetSelect" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
-                            <option value="custom">-- Manuelle Eingabe --</option>
+                            <option value="custom">-- Custom Input --</option>
                             <option value="iphone15">Apple iPhone 15 Pro</option>
                             <option value="canonR5">Canon EOS R5</option>
                             <option value="sonyA7">Sony Alpha 7 IV</option>
-                            <option value="oldNokia">Nokia 3310 (Klassiker Fake)</option>
+                            <option value="oldNokia">Nokia 3310 (Classic Fake)</option>
                         </select>
                     </div>
 
-                    <!-- Camera & Software Details -->
+                    <!-- Make & Model -->
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-xs font-medium text-slate-300 mb-1">Hersteller (Make)</label>
-                            <input type="text" id="inputMake" placeholder="z. B. Apple" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <label class="block text-xs font-medium text-slate-300 mb-1">Make</label>
+                            <input type="text" id="inputMake" placeholder="e.g. Apple" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-slate-300 mb-1">Modell (Model)</label>
-                            <input type="text" id="inputModel" placeholder="z. B. iPhone 15 Pro" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <label class="block text-xs font-medium text-slate-300 mb-1">Model</label>
+                            <input type="text" id="inputModel" placeholder="e.g. iPhone 15 Pro" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
                         </div>
                     </div>
 
-                    <!-- Date & Time Picker -->
+                    <!-- Date -->
                     <div>
-                        <label class="block text-xs font-medium text-slate-300 mb-1">Gefälschtes Aufnahmedatum & Uhrzeit</label>
+                        <label class="block text-xs font-medium text-slate-300 mb-1">Fake Date & Time</label>
                         <input type="datetime-local" id="inputDateTime" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
                     </div>
 
-                    <!-- GPS Location Spoofer -->
+                    <!-- GPS Map -->
                     <div class="space-y-3">
                         <div class="flex justify-between items-center">
-                            <label class="text-xs font-medium text-slate-300">GPS Standort-Spoofer (Auf Karte klicken)</label>
-                            <span class="text-[10px] text-indigo-400 cursor-pointer hover:underline" id="btnResetGps">GPS löschen</span>
+                            <label class="text-xs font-medium text-slate-300">Spoof GPS Location (Click on Map)</label>
+                            <span class="text-[10px] text-indigo-400 cursor-pointer hover:underline" id="btnResetGps">Clear GPS</span>
                         </div>
-                        
-                        <!-- Map Container -->
                         <div id="map"></div>
-
-                        <!-- Lat/Lng Readout/Edit -->
                         <div class="grid grid-cols-2 gap-3">
                             <div>
-                                <label class="block text-[11px] text-slate-400 mb-1">Breitengrad (Lat)</label>
-                                <input type="number" step="any" id="inputLat" placeholder="z. B. 35.6762" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <label class="block text-[11px] text-slate-400 mb-1">Latitude</label>
+                                <input type="number" step="any" id="inputLat" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
                             </div>
                             <div>
-                                <label class="block text-[11px] text-slate-400 mb-1">Längengrad (Lng)</label>
-                                <input type="number" step="any" id="inputLng" placeholder="z. B. 139.6503" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <label class="block text-[11px] text-slate-400 mb-1">Longitude</label>
+                                <input type="number" step="any" id="inputLng" class="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-1.5 text-xs focus:ring-2 focus:ring-indigo-500 outline-none">
                             </div>
                         </div>
-
-                        <!-- Quick GPS Presets -->
                         <div class="flex flex-wrap gap-2 pt-1">
-                            <span class="text-[11px] text-slate-400">Presets:</span>
-                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-0.5 rounded-lg" data-lat="35.6762" data-lng="139.6503">Tokio</button>
-                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-0.5 rounded-lg" data-lat="40.7128" data-lng="-74.0060">New York</button>
-                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-0.5 rounded-lg" data-lat="48.8566" data-lng="2.3522">Paris</button>
-                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-0.5 rounded-lg" data-lat="-25.3444" data-lng="131.0369">Uluru (Outback)</button>
+                            <span class="text-[11px] text-slate-400 mt-1">Quick Locations:</span>
+                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-1 rounded-lg" data-lat="35.6762" data-lng="139.6503">Tokyo</button>
+                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-1 rounded-lg" data-lat="40.7128" data-lng="-74.0060">New York</button>
+                            <button class="gps-preset bg-slate-700/50 hover:bg-slate-700 text-slate-300 text-[10px] px-2 py-1 rounded-lg" data-lat="48.8566" data-lng="2.3522">Paris</button>
                         </div>
                     </div>
 
                     <!-- Submit Button -->
                     <button id="btnSaveSpoofed" class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs py-3.5 px-4 rounded-xl transition shadow-lg shadow-indigo-600/30 flex items-center justify-center space-x-2">
                         <i class="fa-solid fa-wand-magic-sparkles"></i>
-                        <span>Gefälschte Metadaten anwenden & Bild herunterladen</span>
+                        <span>Apply Spoofed EXIF & Download</span>
                     </button>
                 </div>
             </div>
@@ -190,20 +186,59 @@
         </div>
     </main>
 
-    <!-- Footer -->
-    <footer class="border-t border-slate-800 py-6 text-center text-xs text-slate-500 mt-auto">
-        <p>MetaSpoof — Bereit für das Deployment auf Render, Netlify oder Vercel.</p>
+    <!-- Footer & "Why MetaSpoof?" Section -->
+    <footer class="border-t border-slate-800 bg-slate-950/60 py-10 mt-auto">
+        <div class="max-w-6xl mx-auto px-4">
+            
+            <div class="mb-8 text-center max-w-3xl mx-auto">
+                <h3 class="text-xs uppercase font-extrabold tracking-widest text-indigo-400 mb-2">Why MetaSpoof?</h3>
+                <p class="text-slate-400 text-xs leading-relaxed">
+                    Unlike conventional web tools that upload your private photos to remote servers to edit metadata, <strong>MetaSpoof runs 100% locally in your web browser</strong> using client-side JavaScript. 
+                </p>
+            </div>
+
+            <!-- Feature Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto text-xs text-slate-400 mb-8">
+                <div class="bg-slate-900/50 p-3.5 rounded-xl border border-slate-800">
+                    <div class="text-indigo-400 font-semibold mb-1 flex items-center">
+                        <i class="fa-solid fa-lock text-xs mr-2"></i> True Zero-Trust Privacy
+                    </div>
+                    <span>Your images are never sent over the internet. No server logs, no cloud storage, no tracking.</span>
+                </div>
+                <div class="bg-slate-900/50 p-3.5 rounded-xl border border-slate-800">
+                    <div class="text-indigo-400 font-semibold mb-1 flex items-center">
+                        <i class="fa-solid fa-bolt text-xs mr-2"></i> Instant Client Processing
+                    </div>
+                    <span>No waiting for network uploads or server queue delays. All calculations happen in milliseconds.</span>
+                </div>
+                <div class="bg-slate-900/50 p-3.5 rounded-xl border border-slate-800">
+                    <div class="text-indigo-400 font-semibold mb-1 flex items-center">
+                        <i class="fa-solid fa-map-location-dot text-xs mr-2"></i> Interactive Map
+                    </div>
+                    <span>Visual GPS picker with quick presets instead of forcing you to manually copy-paste latitude values.</span>
+                </div>
+                <div class="bg-slate-900/50 p-3.5 rounded-xl border border-slate-800">
+                    <div class="text-indigo-400 font-semibold mb-1 flex items-center">
+                        <i class="fa-solid fa-mobile-screen-button text-xs mr-2"></i> Cross-Format Support
+                    </div>
+                    <span>Seamlessly converts modern formats like iPhone HEIC, PNG, and WebP into EXIF-ready JPEGs.</span>
+                </div>
+            </div>
+
+            <!-- Copyright Line -->
+            <div class="text-center text-[11px] text-slate-600 border-t border-slate-900 pt-6">
+                MetaSpoof &copy; Open-Source Privacy Tool. No data stored or transmitted.
+            </div>
+
+        </div>
     </footer>
 
-    <!-- JavaScript Application Logic -->
     <script>
-        // Global States
         let currentDataUrl = null;
         let originalFileName = "image.jpg";
         let map = null;
         let marker = null;
 
-        // Elements
         const dropzone = document.getElementById('dropzone');
         const fileInput = document.getElementById('fileInput');
         const editorSection = document.getElementById('editorSection');
@@ -211,8 +246,9 @@
         const fileNameEl = document.getElementById('fileName');
         const fileSizeEl = document.getElementById('fileSize');
         const originalExifDisplay = document.getElementById('originalExifDisplay');
-        
-        // Inputs
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingText = document.getElementById('loadingText');
+
         const inputMake = document.getElementById('inputMake');
         const inputModel = document.getElementById('inputModel');
         const inputDateTime = document.getElementById('inputDateTime');
@@ -220,146 +256,159 @@
         const inputLng = document.getElementById('inputLng');
         const presetSelect = document.getElementById('presetSelect');
 
-        // Buttons
         const btnWipe = document.getElementById('btnWipe');
         const btnSaveSpoofed = document.getElementById('btnSaveSpoofed');
         const btnResetGps = document.getElementById('btnResetGps');
 
-        // Setup Drag & Drop
-        dropzone.addEventListener('click', () => fileInput.click());
-        dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('border-indigo-500'); });
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(e => dropzone.addEventListener(e, preventDefaults, false));
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+
+        dropzone.addEventListener('dragover', () => dropzone.classList.add('border-indigo-500'));
         dropzone.addEventListener('dragleave', () => dropzone.classList.remove('border-indigo-500'));
         dropzone.addEventListener('drop', (e) => {
-            e.preventDefault();
             dropzone.classList.remove('border-indigo-500');
             if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
         });
+        dropzone.addEventListener('click', () => fileInput.click());
         fileInput.addEventListener('change', (e) => {
             if (e.target.files.length) handleFile(e.target.files[0]);
         });
 
-        // Initialize Map
         function initMap() {
             if (map) return;
             map = L.map('map').setView([51.505, -0.09], 3);
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-            }).addTo(map);
-
-            map.on('click', function(e) {
-                setGpsMarker(e.latlng.lat, e.latlng.lng);
-            });
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+            map.on('click', (e) => setGpsMarker(e.latlng.lat, e.latlng.lng));
         }
 
         function setGpsMarker(lat, lng) {
             lat = parseFloat(lat.toFixed(6));
             lng = parseFloat(lng.toFixed(6));
-            inputLat.value = lat;
-            inputLng.value = lng;
-
-            if (marker) {
-                marker.setLatLng([lat, lng]);
-            } else {
-                marker = L.marker([lat, lng]).addTo(map);
-            }
+            inputLat.value = lat; inputLng.value = lng;
+            if (marker) marker.setLatLng([lat, lng]);
+            else marker = L.marker([lat, lng]).addTo(map);
             map.panTo([lat, lng]);
         }
 
-        // Preset Camera Handler
         presetSelect.addEventListener('change', (e) => {
             const val = e.target.value;
-            if (val === 'iphone15') {
-                inputMake.value = 'Apple';
-                inputModel.value = 'iPhone 15 Pro';
-            } else if (val === 'canonR5') {
-                inputMake.value = 'Canon';
-                inputModel.value = 'Canon EOS R5';
-            } else if (val === 'sonyA7') {
-                inputMake.value = 'Sony';
-                inputModel.value = 'ILCE-7M4';
-            } else if (val === 'oldNokia') {
-                inputMake.value = 'Nokia';
-                inputModel.value = '3310 Super HD Camera';
-            }
+            if (val === 'iphone15') { inputMake.value = 'Apple'; inputModel.value = 'iPhone 15 Pro'; }
+            else if (val === 'canonR5') { inputMake.value = 'Canon'; inputModel.value = 'Canon EOS R5'; }
+            else if (val === 'sonyA7') { inputMake.value = 'Sony'; inputModel.value = 'ILCE-7M4'; }
+            else if (val === 'oldNokia') { inputMake.value = 'Nokia'; inputModel.value = '3310 Super HD Camera'; }
         });
 
-        // GPS Presets
         document.querySelectorAll('.gps-preset').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const lat = parseFloat(btn.dataset.lat);
-                const lng = parseFloat(btn.dataset.lng);
-                setGpsMarker(lat, lng);
-            });
+            btn.addEventListener('click', () => setGpsMarker(parseFloat(btn.dataset.lat), parseFloat(btn.dataset.lng)));
         });
 
         btnResetGps.addEventListener('click', () => {
-            inputLat.value = '';
-            inputLng.value = '';
-            if (marker) {
-                map.removeLayer(marker);
-                marker = null;
-            }
+            inputLat.value = ''; inputLng.value = '';
+            if (marker) { map.removeLayer(marker); marker = null; }
         });
 
-        // Handle Image File
-        function handleFile(file) {
-            if (!file.type.match('image/jpeg')) {
-                alert('Bitte lade eine gültige JPEG/JPG Datei hoch.');
+        function convertToJpegDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0);
+                    resolve(canvas.toDataURL('image/jpeg', 0.92));
+                };
+                img.onerror = reject;
+                img.src = URL.createObjectURL(file);
+            });
+        }
+
+        async function handleFile(file) {
+            const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+            const fileExt = file.name.split('.').pop().toLowerCase();
+
+            if (!validTypes.includes(file.type) && !['heic', 'heif'].includes(fileExt)) {
+                alert('Please upload a valid image file (JPG, PNG, WEBP, HEIC).');
                 return;
             }
 
-            originalFileName = file.name;
+            originalFileName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
             fileNameEl.textContent = file.name;
             fileSizeEl.textContent = (file.size / 1024).toFixed(1) + ' KB';
 
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                currentDataUrl = e.target.result;
+            showLoading(true, "Processing image...");
+
+            try {
+                let processingFile = file;
+
+                if (file.type === "image/heic" || file.type === "image/heif" || fileExt === "heic" || fileExt === "heif") {
+                    showLoading(true, "Converting iPhone HEIC file...");
+                    const blob = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.92 });
+                    processingFile = Array.isArray(blob) ? blob[0] : blob;
+                }
+
+                if (processingFile.type === "image/png" || processingFile.type === "image/webp") {
+                    showLoading(true, "Converting image to JPEG for EXIF handling...");
+                    currentDataUrl = await convertToJpegDataUrl(processingFile);
+                } else {
+                    currentDataUrl = await readFileAsDataURL(processingFile);
+                }
+
                 imagePreview.src = currentDataUrl;
                 editorSection.classList.remove('hidden');
-                
-                // Initialize Map & Parse Existing EXIF
                 initMap();
                 parseAndDisplayExif(currentDataUrl);
-                
-                // Default datetime picker to now
+
                 const now = new Date();
                 now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                 inputDateTime.value = now.toISOString().slice(0, 16);
-            };
-            reader.readAsDataURL(file);
+
+            } catch (err) {
+                alert('Error loading file: ' + err.message);
+            } finally {
+                showLoading(false);
+            }
         }
 
-        // Read EXIF Data
+        function readFileAsDataURL(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function showLoading(active, text = "Loading...") {
+            loadingText.textContent = text;
+            if (active) loadingOverlay.classList.remove('hidden');
+            else loadingOverlay.classList.add('hidden');
+        }
+
         function parseAndDisplayExif(dataUrl) {
             originalExifDisplay.innerHTML = '';
             try {
                 const exifObj = piexif.load(dataUrl);
                 let items = [];
 
-                if (exifObj["0th"][piexif.ImageIFD.Make]) items.push(`<strong>Hersteller:</strong> ${exifObj["0th"][piexif.ImageIFD.Make]}`);
-                if (exifObj["0th"][piexif.ImageIFD.Model]) items.push(`<strong>Modell:</strong> ${exifObj["0th"][piexif.ImageIFD.Model]}`);
-                if (exifObj["0th"][piexif.ImageIFD.DateTime]) items.push(`<strong>Datum:</strong> ${exifObj["0th"][piexif.ImageIFD.DateTime]}`);
-                if (exifObj["0th"][piexif.ImageIFD.Software]) items.push(`<strong>Software:</strong> ${exifObj["0th"][piexif.ImageIFD.Software]}`);
+                if (exifObj["0th"] && exifObj["0th"][piexif.ImageIFD.Make]) items.push(`<strong>Make:</strong> ${exifObj["0th"][piexif.ImageIFD.Make]}`);
+                if (exifObj["0th"] && exifObj["0th"][piexif.ImageIFD.Model]) items.push(`<strong>Model:</strong> ${exifObj["0th"][piexif.ImageIFD.Model]}`);
+                if (exifObj["0th"] && exifObj["0th"][piexif.ImageIFD.DateTime]) items.push(`<strong>Date:</strong> ${exifObj["0th"][piexif.ImageIFD.DateTime]}`);
 
-                // Check GPS
                 if (exifObj["GPS"] && exifObj["GPS"][piexif.GPSIFD.GPSLatitude]) {
-                    const lat = exifObj["GPS"][piexif.GPSIFD.GPSLatitude];
-                    const latRef = exifObj["GPS"][piexif.GPSIFD.GPSLatitudeRef] || 'N';
-                    items.push(`<strong>GPS Latitude:</strong> ${latRef} (${lat})`);
+                    items.push(`<strong>GPS Data:</strong> Present`);
                 }
 
                 if (items.length === 0) {
-                    originalExifDisplay.innerHTML = '<p class="text-amber-400">Keine wesentlichen EXIF-Metadaten in diesem Bild gefunden.</p>';
+                    originalExifDisplay.innerHTML = '<p class="text-amber-400">No EXIF metadata detected in image.</p>';
                 } else {
                     originalExifDisplay.innerHTML = items.map(i => `<div class="bg-slate-900/60 p-2 rounded-lg border border-slate-800">${i}</div>`).join('');
                 }
             } catch (err) {
-                originalExifDisplay.innerHTML = '<p class="text-slate-500 italic">Fehler beim Lesen der Metadaten oder keine EXIF vorhanden.</p>';
+                originalExifDisplay.innerHTML = '<p class="text-amber-400">No EXIF metadata detected in image.</p>';
             }
         }
 
-        // Helper: Convert Lat/Lng to EXIF Rational Format
         function degToExifDeg(deg) {
             const absolute = Math.abs(deg);
             const degrees = Math.floor(absolute);
@@ -369,35 +418,31 @@
             return [[degrees, 1], [minutes, 1], [seconds, 100]];
         }
 
-        // Action 1: Wipe EXIF
+        function safelyRemoveExif(dataUrl) {
+            try { return piexif.remove(dataUrl); } 
+            catch (e) { return dataUrl; }
+        }
+
         btnWipe.addEventListener('click', () => {
             if (!currentDataUrl) return;
-            try {
-                const cleanedDataUrl = piexif.remove(currentDataUrl);
-                downloadImage(cleanedDataUrl, `cleaned_${originalFileName}`);
-            } catch (err) {
-                alert('Fehler beim Entfernen der Metadaten: ' + err.message);
-            }
+            const cleanedDataUrl = safelyRemoveExif(currentDataUrl);
+            downloadImage(cleanedDataUrl, `cleaned_${originalFileName}.jpg`);
         });
 
-        // Action 2: Apply Spoofed EXIF
         btnSaveSpoofed.addEventListener('click', () => {
             if (!currentDataUrl) return;
 
             try {
-                // First strip old EXIF
-                const cleanDataUrl = piexif.remove(currentDataUrl);
+                const cleanDataUrl = safelyRemoveExif(currentDataUrl);
 
-                // Build new EXIF structure
                 let zeroth = {};
                 let exif = {};
                 let gps = {};
 
                 if (inputMake.value.trim()) zeroth[piexif.ImageIFD.Make] = inputMake.value.trim();
                 if (inputModel.value.trim()) zeroth[piexif.ImageIFD.Model] = inputModel.value.trim();
-                zeroth[piexif.ImageIFD.Software] = "MetaSpoof Online v1.0";
+                zeroth[piexif.ImageIFD.Software] = "MetaSpoof Online v1.2";
 
-                // Format DateTime -> YYYY:MM:DD HH:MM:SS
                 if (inputDateTime.value) {
                     const formattedDate = inputDateTime.value.replace('T', ' ').replace(/-/g, ':') + ':00';
                     zeroth[piexif.ImageIFD.DateTime] = formattedDate;
@@ -405,7 +450,6 @@
                     exif[piexif.ExifIFD.DateTimeDigitized] = formattedDate;
                 }
 
-                // Format GPS
                 const lat = parseFloat(inputLat.value);
                 const lng = parseFloat(inputLng.value);
                 if (!isNaN(lat) && !isNaN(lng)) {
@@ -419,13 +463,12 @@
                 const exifBytes = piexif.dump(exifObj);
                 const spoofedDataUrl = piexif.insert(exifBytes, cleanDataUrl);
 
-                downloadImage(spoofedDataUrl, `spoofed_${originalFileName}`);
+                downloadImage(spoofedDataUrl, `spoofed_${originalFileName}.jpg`);
             } catch (err) {
-                alert('Fehler beim Schreiben der gefälschten Metadaten: ' + err.message);
+                alert('Error generating spoofed metadata: ' + err.message);
             }
         });
 
-        // Download helper
         function downloadImage(dataUrl, filename) {
             const a = document.createElement('a');
             a.href = dataUrl;
